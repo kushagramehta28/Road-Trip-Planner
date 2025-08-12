@@ -7,6 +7,15 @@ interface Location {
   id: number;
   address: string;
   coordinates?: { lat: number; lng: number };
+  geocodingError?: string;
+}
+
+interface Warning {
+  message: string;
+  invalidLocations: Array<{
+    address: string;
+    error: string;
+  }>;
 }
 
 const mapContainerStyle = {
@@ -25,6 +34,8 @@ export default function Home() {
   const [totalDistance, setTotalDistance] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [mapCenter, setMapCenter] = useState(defaultCenter);
+  const [warning, setWarning] = useState<Warning | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
@@ -49,6 +60,8 @@ export default function Home() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setError(null);
+    setWarning(null);
 
     try {
       const response = await fetch('/api/optimize-route', {
@@ -60,14 +73,28 @@ export default function Home() {
       });
 
       const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error);
+        if (data.invalidLocations) {
+          setWarning({
+            message: data.error,
+            invalidLocations: data.invalidLocations
+          });
+        }
+        return;
+      }
+
       setOptimizedRoute(data.optimizedRoute);
       setTotalDistance(data.totalDistance);
+      setWarning(data.warnings || null);
 
       if (data.optimizedRoute[0]?.coordinates) {
         setMapCenter(data.optimizedRoute[0].coordinates);
       }
     } catch (error) {
       console.error('Error optimizing route:', error);
+      setError('Failed to connect to the server. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -319,6 +346,25 @@ export default function Home() {
           </form>
         </div>
 
+        {error && (
+          <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded mb-8">
+            <strong>Error:</strong> {error}
+          </div>
+        )}
+
+        {warning && (
+          <div className="bg-yellow-900 border border-yellow-700 text-yellow-200 px-4 py-3 rounded mb-8">
+            <strong>Warning:</strong> {warning.message}
+            <ul className="mt-2 list-disc list-inside">
+              {warning.invalidLocations.map((loc, index) => (
+                <li key={index} className="text-sm">
+                  <strong>{loc.address}:</strong> {loc.error}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {optimizedRoute.length > 0 && (
           <div className="space-y-8">
             <div className="bg-gray-800 rounded-lg shadow-md p-6">
@@ -330,8 +376,13 @@ export default function Home() {
               <p className="text-lg mb-4 text-gray-300">Total Distance: {totalDistance} km</p>
               <ol className="list-decimal list-inside space-y-2">
                 {optimizedRoute.map((location, index) => (
-                  <li key={index} className="text-lg text-gray-300">
+                  <li key={index} className={`text-lg ${location.coordinates ? 'text-gray-300' : 'text-red-400'}`}>
                     {location.address}
+                    {location.geocodingError && (
+                      <span className="text-sm text-red-400 block ml-4">
+                        ⚠️ {location.geocodingError}
+                      </span>
+                    )}
                   </li>
                 ))}
               </ol>

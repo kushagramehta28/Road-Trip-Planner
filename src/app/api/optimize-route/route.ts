@@ -7,6 +7,7 @@ interface Location {
   id: number;
   address: string;
   coordinates?: { lat: number; lng: number };
+  geocodingError?: string;
 }
 
 // Haversine formula to calculate distance between two points
@@ -26,18 +27,25 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 function solveTSP(locations: Location[]): Location[] {
   if (locations.length < 2) return locations;
 
+  // Filter out locations without coordinates
+  const validLocations = locations.filter(loc => loc.coordinates);
+  
+  if (validLocations.length < 2) {
+    return locations; // Return original order if not enough valid locations
+  }
+
   // Create distance matrix
-  const n = locations.length;
+  const n = validLocations.length;
   const distMatrix: number[][] = Array(n).fill(0).map(() => Array(n).fill(0));
   
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
-      if (i !== j && locations[i].coordinates && locations[j].coordinates) {
+      if (i !== j && validLocations[i].coordinates && validLocations[j].coordinates) {
         distMatrix[i][j] = calculateDistance(
-          locations[i].coordinates!.lat,
-          locations[i].coordinates!.lng,
-          locations[j].coordinates!.lat,
-          locations[j].coordinates!.lng
+          validLocations[i].coordinates!.lat,
+          validLocations[i].coordinates!.lng,
+          validLocations[j].coordinates!.lat,
+          validLocations[j].coordinates!.lng
         );
       }
     }
@@ -97,8 +105,13 @@ function solveTSP(locations: Location[]): Location[] {
   path.reverse();
   path.push(0); // Return to start
 
-  // Convert indices to locations
-  return path.map(index => locations[index]);
+  // Convert indices to valid locations
+  const optimizedValidLocations = path.map(index => validLocations[index]);
+  
+  // Add invalid locations at the end
+  const invalidLocations = locations.filter(loc => !loc.coordinates);
+  
+  return [...optimizedValidLocations, ...invalidLocations];
 }
 
 export async function POST(request: Request) {
@@ -116,25 +129,47 @@ export async function POST(request: Request) {
             },
           });
 
-          if (response.data.results[0]) {
+          if (response.data.results && response.data.results.length > 0) {
             const { lat, lng } = response.data.results[0].geometry.location;
             return {
               ...location,
               coordinates: { lat, lng },
             };
+          } else {
+            // No results found
+            return {
+              ...location,
+              geocodingError: `Could not find coordinates for "${location.address}". Please check the spelling or try a more specific address.`
+            };
           }
-          return location;
         } catch (error) {
           console.error(`Error geocoding ${location.address}:`, error);
-          return location;
+          return {
+            ...location,
+            geocodingError: `Failed to geocode "${location.address}". Please check your internet connection and try again.`
+          };
         }
       })
     );
 
+    // Check if we have enough valid locations
+    const validLocations = geocodedLocations.filter(loc => loc.coordinates);
+    const invalidLocations = geocodedLocations.filter(loc => !loc.coordinates);
+
+    if (validLocations.length < 2) {
+      return NextResponse.json({
+        error: 'Need at least 2 valid locations to calculate a route.',
+        invalidLocations: invalidLocations.map(loc => ({
+          address: loc.address,
+          error: loc.geocodingError
+        }))
+      }, { status: 400 });
+    }
+
     // Solve TSP using dynamic programming
     const optimizedRoute = solveTSP(geocodedLocations);
 
-    // Calculate total distance
+    // Calculate total distance (only for valid locations)
     let totalDistance = 0;
     for (let i = 0; i < optimizedRoute.length - 1; i++) {
       const current = optimizedRoute[i];
@@ -151,7 +186,14 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ 
       optimizedRoute,
-      totalDistance: totalDistance.toFixed(2)
+      totalDistance: totalDistance.toFixed(2),
+      warnings: invalidLocations.length > 0 ? {
+        message: `${invalidLocations.length} location(s) could not be geocoded and were excluded from the route.`,
+        invalidLocations: invalidLocations.map(loc => ({
+          address: loc.address,
+          error: loc.geocodingError
+        }))
+      } : undefined
     });
   } catch (error) {
     console.error('Error processing request:', error);
