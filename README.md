@@ -3,8 +3,7 @@
 A web application that solves the Traveling Salesman Problem (TSP) to find the optimal route for visiting multiple locations. Built with Next.js, TypeScript, and Google Maps API.
 
 ## 🌐 Live Demo
-
-[View Live Demo](https://your-vercel-url.vercel.app) *(Replace with your actual Vercel URL)*
+[Visit the website](https://yourwebsite.com)
 
 ## Features
 
