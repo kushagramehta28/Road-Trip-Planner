@@ -1,103 +1,344 @@
-import Image from "next/image";
+'use client';
+
+import { useState } from 'react';
+import { GoogleMap, useLoadScript, Marker, Polyline } from '@react-google-maps/api';
+
+interface Location {
+  id: number;
+  address: string;
+  coordinates?: { lat: number; lng: number };
+}
+
+const mapContainerStyle = {
+  width: '100%',
+  height: '400px',
+};
+
+const defaultCenter = {
+  lat: 0,
+  lng: 0,
+};
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [locations, setLocations] = useState<Location[]>([{ id: 1, address: '' }]);
+  const [optimizedRoute, setOptimizedRoute] = useState<Location[]>([]);
+  const [totalDistance, setTotalDistance] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [mapCenter, setMapCenter] = useState(defaultCenter);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+  const { isLoaded, loadError } = useLoadScript({
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
+  });
+
+  const addLocation = () => {
+    setLocations([...locations, { id: locations.length + 1, address: '' }]);
+  };
+
+  const removeLocation = (id: number) => {
+    if (locations.length > 1) {
+      setLocations(locations.filter(loc => loc.id !== id));
+    }
+  };
+
+  const updateLocation = (id: number, address: string) => {
+    setLocations(locations.map(loc => 
+      loc.id === id ? { ...loc, address } : loc
+    ));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/optimize-route', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ locations }),
+      });
+
+      const data = await response.json();
+      setOptimizedRoute(data.optimizedRoute);
+      setTotalDistance(data.totalDistance);
+
+      if (data.optimizedRoute[0]?.coordinates) {
+        setMapCenter(data.optimizedRoute[0].coordinates);
+      }
+    } catch (error) {
+      console.error('Error optimizing route:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const renderMap = () => {
+    if (loadError) return <div>Error loading maps</div>;
+    if (!isLoaded) return <div>Loading maps...</div>;
+
+    return (
+      <GoogleMap
+        mapContainerStyle={mapContainerStyle}
+        zoom={12}
+        center={mapCenter}
+        options={{
+          styles: [
+            {
+              "elementType": "geometry",
+              "stylers": [
+                {
+                  "color": "#242f3e"
+                }
+              ]
+            },
+            {
+              "elementType": "labels.text.stroke",
+              "stylers": [
+                {
+                  "color": "#242f3e"
+                }
+              ]
+            },
+            {
+              "elementType": "labels.text.fill",
+              "stylers": [
+                {
+                  "color": "#746855"
+                }
+              ]
+            },
+            {
+              "featureType": "administrative.locality",
+              "elementType": "labels.text.fill",
+              "stylers": [
+                {
+                  "color": "#d59563"
+                }
+              ]
+            },
+            {
+              "featureType": "poi",
+              "elementType": "labels.text.fill",
+              "stylers": [
+                {
+                  "color": "#d59563"
+                }
+              ]
+            },
+            {
+              "featureType": "poi.park",
+              "elementType": "geometry",
+              "stylers": [
+                {
+                  "color": "#263c3f"
+                }
+              ]
+            },
+            {
+              "featureType": "poi.park",
+              "elementType": "labels.text.fill",
+              "stylers": [
+                {
+                  "color": "#6b9a76"
+                }
+              ]
+            },
+            {
+              "featureType": "road",
+              "elementType": "geometry",
+              "stylers": [
+                {
+                  "color": "#38414e"
+                }
+              ]
+            },
+            {
+              "featureType": "road",
+              "elementType": "geometry.stroke",
+              "stylers": [
+                {
+                  "color": "#212a37"
+                }
+              ]
+            },
+            {
+              "featureType": "road",
+              "elementType": "labels.text.fill",
+              "stylers": [
+                {
+                  "color": "#9ca5b3"
+                }
+              ]
+            },
+            {
+              "featureType": "road.highway",
+              "elementType": "geometry",
+              "stylers": [
+                {
+                  "color": "#746855"
+                }
+              ]
+            },
+            {
+              "featureType": "road.highway",
+              "elementType": "geometry.stroke",
+              "stylers": [
+                {
+                  "color": "#1f2835"
+                }
+              ]
+            },
+            {
+              "featureType": "road.highway",
+              "elementType": "labels.text.fill",
+              "stylers": [
+                {
+                  "color": "#f3d19c"
+                }
+              ]
+            },
+            {
+              "featureType": "transit",
+              "elementType": "geometry",
+              "stylers": [
+                {
+                  "color": "#2f3948"
+                }
+              ]
+            },
+            {
+              "featureType": "transit.station",
+              "elementType": "labels.text.fill",
+              "stylers": [
+                {
+                  "color": "#d59563"
+                }
+              ]
+            },
+            {
+              "featureType": "water",
+              "elementType": "geometry",
+              "stylers": [
+                {
+                  "color": "#17263c"
+                }
+              ]
+            },
+            {
+              "featureType": "water",
+              "elementType": "labels.text.fill",
+              "stylers": [
+                {
+                  "color": "#515c6d"
+                }
+              ]
+            },
+            {
+              "featureType": "water",
+              "elementType": "labels.text.stroke",
+              "stylers": [
+                {
+                  "color": "#17263c"
+                }
+              ]
+            }
+          ]
+        }}
+      >
+        {optimizedRoute.map((location, index) => (
+          location.coordinates && (
+            <Marker
+              key={index}
+              position={location.coordinates}
+              label={(index + 1).toString()}
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+          )
+        ))}
+        {optimizedRoute.length > 1 && (
+          <Polyline
+            path={optimizedRoute
+              .filter(loc => loc.coordinates)
+              .map(loc => loc.coordinates!)}
+            options={{
+              strokeColor: '#00ff00',
+              strokeOpacity: 0.8,
+              strokeWeight: 2,
+            }}
+          />
+        )}
+      </GoogleMap>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-900 p-8">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-3xl font-bold mb-8 text-center text-white">Road Trip Planner</h1>
+        
+        <div className="bg-gray-800 rounded-lg shadow-md p-6 mb-8">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {locations.map((location) => (
+              <div key={location.id} className="flex gap-2">
+                <input
+                  type="text"
+                  value={location.address}
+                  onChange={(e) => updateLocation(location.id, e.target.value)}
+                  placeholder="Enter location address"
+                  className="flex-1 p-2 border border-gray-600 rounded bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => removeLocation(location.id)}
+                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                  disabled={locations.length === 1}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            
+            <div className="flex gap-4">
+              <button
+                type="button"
+                onClick={addLocation}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+              >
+                Add Location
+              </button>
+              
+              <button
+                type="submit"
+                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                disabled={isLoading}
+              >
+                {isLoading ? 'Optimizing...' : 'Find Optimal Route'}
+              </button>
+            </div>
+          </form>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {optimizedRoute.length > 0 && (
+          <div className="space-y-8">
+            <div className="bg-gray-800 rounded-lg shadow-md p-6">
+              {renderMap()}
+            </div>
+            
+            <div className="bg-gray-800 rounded-lg shadow-md p-6">
+              <h2 className="text-2xl font-bold mb-4 text-white">Optimized Route</h2>
+              <p className="text-lg mb-4 text-gray-300">Total Distance: {totalDistance} km</p>
+              <ol className="list-decimal list-inside space-y-2">
+                {optimizedRoute.map((location, index) => (
+                  <li key={index} className="text-lg text-gray-300">
+                    {location.address}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
